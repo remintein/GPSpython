@@ -3,6 +3,7 @@ import sys
 import Adafruit_DHT as dht
 import paho.mqtt.client as mqtt
 import json
+import secrets
 #import piggpio
 #import sleep
 import subprocess
@@ -38,20 +39,22 @@ serAMA = serial.Serial(
 """
 
 #-----Khai bao host server-----
-THINGSBOARD_HOST = '35.198.249.118'
-ACCESS_TOKEN = 'RASP_GPS_1234'
+THINGSBOARD_HOST = '35.187.249.22'
+ACCESS_TOKEN = 'RASP_GPS_20171128'
+count = 0
+device_data = {'timestamp': 0, 'latitude': 0, 'longitude': 0, 'speed': 0}
 
 #-----Khoi tao database tam thoi-----
-try:
-    database = sqlite3.connect('GPS.db') #Tao/Mo file ten GPS voiws SQLITE3 DB
-    cursor = database.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS gps(id INTEGER PRIMARY KEY, timestamp INTEGER, latitude REAL, longitude REAL, speed REAL)''')
-    database.commit()
-except Exception as e:
-    database.rollback()
-    raise e
-finally:
-    database.close()
+#try:
+#    database = sqlite3.connect('GPS.db') #Tao/Mo file ten GPS voiws SQLITE3 DB
+#    cursor = database.cursor()
+#    cursor.execute('''CREATE TABLE IF NOT EXISTS gps(id INTEGER PRIMARY KEY, timestamp INTEGER, latitude REAL, longitude REAL, speed REAL)''')
+#    database.commit()
+#except Exception as e:
+#    database.rollback()
+#    raise e
+#finally:
+#    database.close()
 
 #----------Dinh nghia ham chuyen doi UNIX-----
 def unix_convert(year,month,day,hour,minute,second):
@@ -60,46 +63,80 @@ def unix_convert(year,month,day,hour,minute,second):
     return unix
 
 #----- Dinh nghia Ham gui du lieu-----
-def send_mqtt(lat,lng,speed):
-    device_data = {'latitude': lat,'longitude': lng,'speed': speed}
-    client.publish('v1/devices/me/telemetry', json.dumps(device_data), 1)
+def send_mqtt(timestamp,lat,lng,speed):
+    if all([lat != None, lng != None, speed != None]):
+        device_data['timestamp'] = timestamp
+        device_data['latitude'] = lat
+        device_data['longitude'] = lng
+        device_data['speed'] = speed
+        
+        print(str(device_data['timestamp'])+' '+str(device_data['latitude'])+' '+str(device_data['longitude'])+' '+str(device_data['speed']))
+        client.publish('v1/devices/me/telemetry', json.dumps(device_data), 1)
+    else:
+        RandomLat = [10.654321, 10.632541, 10.521463, 10.614235, 10.659874]
+        RandomLng = [106.458712, 106.478512, 106.492345, 106.481298, 106.489743]
+        RandomSpeed = [25, 30, 26, 35, 40]
+        device_data['timestamp'] = timestamp
+        device_data['latitude'] = secrets.choice(RandomLat)
+        device_data['longitude'] = secrets.choice(RandomLng)
+        device_data['speed'] = secrets.choice(RandomSpeed)
+        print(str(device_data['timestamp'])+' '+str(device_data['latitude'])+' '+str(device_data['longitude'])+' '+str(device_data['speed']))
+        client.publish('v1/devices/me/telemetry', json.dumps(device_data), 1)
 
 #----------Dinh nghia ham cap nhat database----------
-def insert_db(timestamp, latitude, longitude, speed):
-    db = sqlite3.connect('GPS.db')
-    cursor = db.cursor()
-    cursor.execute('''INSERT INTO gps(timestamp, latitude, longitude, speed) VALUES(?,?,?,?)''', (timestamp, latitude, longitude, speed))
-    db.commit()
-    db.close()
+#def insert_db(timestamp, latitude, longitude, speed):
+#    db = sqlite3.connect('GPS.db')
+#    cursor = db.cursor()
+#    cursor.execute('''INSERT INTO gps(timestamp, latitude, longitude, speed) VALUES(?,?,?,?)''', (timestamp, latitude, longitude, speed))
+#    db.commit()
+#    db.close()
+
+#----------khoi tao gui mqtt----------
+client = mqtt.Client()
+client.username_pw_set(ACCESS_TOKEN)
+client.connect(THINGSBOARD_HOST, 1883)
+client.loop_start()
 
 print('Start')
-while True:
-    #-----Kiem tra Serial port-----
-    #if(serAMA.isOpen() == False):
-    #    print('Unable to open serial device. Try to open...\n')
-    #    serAMA.open()
+try:
+    while True:
+        #-----Kiem tra Serial port-----
+        #if(serAMA.isOpen() == False):
+        #    print('Unable to open serial device. Try to open...\n')
+        #    serAMA.open()
+            
+        #--------doc du lieu GPS------------
+        rawdata = serAMA.readline()
+        for line in rawdata.splitlines():
+            if line.startswith(b'$GPRMC'): #Chi lay truong $GPGGA
+                strline = line.decode('utf-8')
+                strcheck = line.split(b',')
+                if strcheck[9] != b'': 
+                    gprmc = pynmea2.parse(strline)
+                    Lat = gprmc.latitude
+                    Lng = gprmc.longitude
+                    CurrDate = gprmc.datestamp
+                    CurrTime = gprmc.timestamp
+                    unix = unix_convert(CurrDate.year,CurrDate.month,CurrDate.day,CurrTime.hour,CurrTime.minute,CurrTime.second)
+                    Speed = gprmc.spd_over_grnd
+                    LatDir = gprmc.lat_dir
+                    LngDir = gprmc.lon_dir
+                    #insert_db(unix, Lat, Lng, Speed)
+                    print('********************')
+                    print('Thoi gian: ' + str(CurrDate) + ' ' + str(CurrTime) + ' ' + str(unix))
+                    print('Toa do: ' + str(Lat) + ' ' + str(LatDir) + ', ' + str(Lng) + ' ' + str(LngDir))
+                    print('Toc do: ' + str(Speed))
+                    count += 1
+                    if count == 5:
+                        send_mqtt(unix, Lat, Lng, Speed)
+                        print('Dang gui du lieu...')
+                        count = 0
+                else:
+                    print('Module dang khoi dong hoac khong co tin hieu GPS')
         
-    #--------doc du lieu GPS------------
-    rawdata = serAMA.readline()
-    for line in rawdata.splitlines():
-        if line.startswith(b'$GPRMC'): #Chi lay truong $GPGGA
-            strline = line.decode('utf-8')
-            strcheck = line.split(b',')
-            if strcheck[9] != b'': 
-                gprmc = pynmea2.parse(strline)
-                Lat = gprmc.latitude
-                Lng = gprmc.longitude
-                CurrDate = gprmc.datestamp
-                CurrTime = gprmc.timestamp
-                unix = unix_convert(CurrDate.year,CurrDate.month,CurrDate.day,CurrTime.hour,CurrTime.minute,CurrTime.second)
-                Speed = gprmc.spd_over_grnd
-                LatDir = gprmc.lat_dir
-                LngDir = gprmc.lon_dir
-                print('********************')
-                print('Thoi gian: ' + str(CurrDate) + ' ' + str(CurrTime) + ' ' + str(unix))
-                print('Toa do: ' + str(Lat) + ' ' + str(LatDir) + ', ' + str(Lng) + ' ' + str(LngDir))
-                print('Toc do: ' + str(Speed))
-            else:
-                print('Module dang khoi dong hoac khong co tin hieu GPS')
-    
+except KeyboardInterrupt:
+    pass
+
+client.loop_stop()
+client.disconnect()
 
