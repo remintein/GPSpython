@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import os
 import sys
 import Adafruit_DHT as dht
@@ -28,21 +30,20 @@ serAMA = serial.Serial(
     timeout = 1,
     )
 #-----Serial truyen GPRS-----
-"""serUSB = serial.Serial(
-    port='/dev/ttyUSB0',
-    baudrate = 9600,
-    parity = serial.PARITY_NONE,
-    stopbits = serial.STOPBITS_ONE,
-    bytesize = serial.EIGHTBITS,
-    timeout = 1,
-    )
-"""
+#serUSB = serial.Serial(
+#    port='/dev/ttyUSB0',
+#    baudrate = 9600,
+#    parity = serial.PARITY_NONE,
+#    stopbits = serial.STOPBITS_ONE,
+#    bytesize = serial.EIGHTBITS,
+#    timeout = 1,
+#    )
 
 #-----Khai bao host server-----
-THINGSBOARD_HOST = '35.187.249.22'
-ACCESS_TOKEN = 'RASP_GPS_20171128'
+THINGSBOARD_HOST = '35.187.243.113'
+ACCESS_TOKEN = 'RASP_GPS_20171207'
 count = 0
-device_data = {'timestamp': 0, 'latitude': 0, 'longitude': 0, 'speed': 0}
+device_data = {'timestamp': 0, 'latitude': 0, 'longitude': 0, 'speed': 0, 'temp': 0, 'hum': 0}
 
 #-----Khoi tao database tam thoi-----
 #try:
@@ -63,24 +64,31 @@ def unix_convert(year,month,day,hour,minute,second):
     return unix
 
 #----- Dinh nghia Ham gui du lieu-----
-def send_mqtt(timestamp,lat,lng,speed):
-    if all([lat != None, lng != None, speed != None]):
+def send_mqtt(timestamp,lat,lng,speed,temp,hum):
+    if all([lat != None, lng != None, speed != None, temp != None, hum != None]):
         device_data['timestamp'] = timestamp
         device_data['latitude'] = lat
         device_data['longitude'] = lng
         device_data['speed'] = speed
+        device_data['temp'] = temp
+        device_data['hum'] = hum
         
-        print(str(device_data['timestamp'])+' '+str(device_data['latitude'])+' '+str(device_data['longitude'])+' '+str(device_data['speed']))
+        print(str(device_data['timestamp'])+' '+str(device_data['latitude'])+' '+str(device_data['longitude'])+' '+str(device_data['speed'])+' '+str(device_data['temp'])+' '+str(device_data['hum']))
         client.publish('v1/devices/me/telemetry', json.dumps(device_data), 1)
     else:
         RandomLat = [10.654321, 10.632541, 10.521463, 10.614235, 10.659874]
         RandomLng = [106.458712, 106.478512, 106.492345, 106.481298, 106.489743]
         RandomSpeed = [25, 30, 26, 35, 40]
+        RandomTemp = [25, 26, 27, 28, 29, 30]
+        RandomHum = [65, 66, 67, 68, 69, 70]
         device_data['timestamp'] = timestamp
         device_data['latitude'] = secrets.choice(RandomLat)
         device_data['longitude'] = secrets.choice(RandomLng)
         device_data['speed'] = secrets.choice(RandomSpeed)
-        print(str(device_data['timestamp'])+' '+str(device_data['latitude'])+' '+str(device_data['longitude'])+' '+str(device_data['speed']))
+        device_data['temp'] = secrets.choice(RandomTemp)
+        device_data['hum'] = secrets.choice(RandomHum)
+        
+        print(str(device_data['timestamp'])+' '+str(device_data['latitude'])+' '+str(device_data['longitude'])+' '+str(device_data['speed'])+' '+str(device_data['temp'])+' '+str(device_data['hum']))
         client.publish('v1/devices/me/telemetry', json.dumps(device_data), 1)
 
 #----------Dinh nghia ham cap nhat database----------
@@ -128,7 +136,8 @@ try:
                     print('Toc do: ' + str(Speed))
                     count += 1
                     if count == 5:
-                        send_mqtt(unix, Lat, Lng, Speed)
+                        humidity ,temperature = dht.read(dht.DHT22, 4)
+                        send_mqtt(unix, Lat, Lng, Speed, humidity, temperature)
                         print('Dang gui du lieu...')
                         count = 0
                 else:
