@@ -6,6 +6,7 @@ import Adafruit_DHT as dht
 import paho.mqtt.client as mqtt
 import json
 import secrets
+import RPi.GPIO as GPIO 
 #import piggpio
 #import sleep
 import subprocess
@@ -19,6 +20,8 @@ from datetime import datetime, date
 from pynmea2 import nmea
 #--------------------------------------------------------
 
+
+
 #----------Khai bao serial---------------------
 #-----Serial GPS data-----
 serAMA = serial.Serial(
@@ -30,14 +33,20 @@ serAMA = serial.Serial(
     timeout = 1,
     )
 #-----Serial truyen GPRS-----
-#serUSB = serial.Serial(
-#    port='/dev/ttyUSB0',
-#    baudrate = 9600,
-#    parity = serial.PARITY_NONE,
-#    stopbits = serial.STOPBITS_ONE,
-#    bytesize = serial.EIGHTBITS,
-#    timeout = 1,
-#    )
+"""serUSB = serial.Serial(
+    port='/dev/ttyUSB0',
+    baudrate = 9600,
+    parity = serial.PARITY_NONE,
+    stopbits = serial.STOPBITS_ONE,
+    bytesize = serial.EIGHTBITS,
+    timeout = 1,
+    )
+"""
+#--------Set LED------
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(5, GPIO.OUT)
+GPIO.setup(6, GPIO.OUT)
+GPIO.setwarnings(False)
 
 #-----Khai bao host server-----
 THINGSBOARD_HOST = '35.187.243.113'
@@ -56,6 +65,30 @@ device_data = {'timestamp': 0, 'latitude': 0, 'longitude': 0, 'speed': 0, 'temp'
 #    raise e
 #finally:
 #    database.close()
+
+#------Nhan duoc GPS-----
+def gps_confirm():
+    GPIO.output(5, GPIO.HIGH)
+    time.sleep(0.125)
+    GPIO.output(5, GPIO.LOW)
+    time.sleep(0.125)
+
+#------Gui du lieu-----
+def senddata_confirm():
+    GPIO.output(6, GPIO.HIGH)
+    time.sleep(0.125)
+    GPIO.output(6, GPIO.LOW)
+    time.sleep(0.125)
+
+#-----module dang khoi dong-----
+def startup_confirm():
+    GPIO.output(5, GPIO.HIGH)
+    GPIO.output(6, GPIO.HIGH)
+    time.sleep(0.25)
+    GPIO.output(5, GPIO.LOW)
+    GPIO.output(6, GPIO.LOW)
+    time.sleep(0.25)
+        
 
 #----------Dinh nghia ham chuyen doi UNIX-----
 def unix_convert(year,month,day,hour,minute,second):
@@ -79,8 +112,8 @@ def send_mqtt(timestamp,lat,lng,speed,temp,hum):
         RandomLat = [10.654321, 10.632541, 10.521463, 10.614235, 10.659874]
         RandomLng = [106.458712, 106.478512, 106.492345, 106.481298, 106.489743]
         RandomSpeed = [25, 30, 26, 35, 40]
-        RandomTemp = [25, 26, 27, 28, 29, 30]
-        RandomHum = [65, 66, 67, 68, 69, 70]
+        RandomTemp = [28, 29, 30, 31, 32, 33]
+        RandomHum = [68, 69, 70, 71, 72]
         device_data['timestamp'] = timestamp
         device_data['latitude'] = secrets.choice(RandomLat)
         device_data['longitude'] = secrets.choice(RandomLng)
@@ -134,18 +167,21 @@ try:
                     print('Thoi gian: ' + str(CurrDate) + ' ' + str(CurrTime) + ' ' + str(unix))
                     print('Toa do: ' + str(Lat) + ' ' + str(LatDir) + ', ' + str(Lng) + ' ' + str(LngDir))
                     print('Toc do: ' + str(Speed))
+                    gps_confirm()
                     count += 1
                     if count == 5:
                         humidity ,temperature = dht.read(dht.DHT22, 4)
                         send_mqtt(unix, Lat, Lng, Speed, humidity, temperature)
                         print('Dang gui du lieu...')
+                        senddata_confirm()
                         count = 0
                 else:
+                    startup_confirm()
                     print('Module dang khoi dong hoac khong co tin hieu GPS')
         
 except KeyboardInterrupt:
     pass
-
+GPIO.cleanup()
 client.loop_stop()
 client.disconnect()
 
