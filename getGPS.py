@@ -3,12 +3,10 @@
 import os
 import sys
 import Adafruit_DHT as dht
-import paho.mqtt.client as mqtt
+import paho.mqtt.publish as mqtt
 import json
 import secrets
 import RPi.GPIO as GPIO 
-#import piggpio
-#import sleep
 import subprocess
 import time
 import datetime
@@ -32,16 +30,7 @@ serAMA = serial.Serial(
     bytesize = serial.EIGHTBITS,
     timeout = 1,
     )
-#-----Serial truyen GPRS-----
-"""serUSB = serial.Serial(
-    port='/dev/ttyUSB0',
-    baudrate = 9600,
-    parity = serial.PARITY_NONE,
-    stopbits = serial.STOPBITS_ONE,
-    bytesize = serial.EIGHTBITS,
-    timeout = 1,
-    )
-"""
+
 #--------Set LED------
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(5, GPIO.OUT)
@@ -49,22 +38,10 @@ GPIO.setup(6, GPIO.OUT)
 GPIO.setwarnings(False)
 
 #-----Khai bao host server-----
-THINGSBOARD_HOST = '35.187.243.113'
-ACCESS_TOKEN = 'RASP_GPS_20171207'
+THINGSBOARD_HOST = 'demo.thingsboard.io'
+ACCESS_TOKEN = 'LMT_TEST'
 count = 0
 device_data = {'timestamp': 0, 'latitude': 0, 'longitude': 0, 'speed': 0, 'temp': 0, 'hum': 0}
-
-#-----Khoi tao database tam thoi-----
-#try:
-#    database = sqlite3.connect('GPS.db') #Tao/Mo file ten GPS voiws SQLITE3 DB
-#    cursor = database.cursor()
-#    cursor.execute('''CREATE TABLE IF NOT EXISTS gps(id INTEGER PRIMARY KEY, timestamp INTEGER, latitude REAL, longitude REAL, speed REAL)''')
-#    database.commit()
-#except Exception as e:
-#    database.rollback()
-#    raise e
-#finally:
-#    database.close()
 
 #------Nhan duoc GPS-----
 def gps_confirm():
@@ -89,7 +66,6 @@ def startup_confirm():
     GPIO.output(6, GPIO.LOW)
     time.sleep(0.25)
         
-
 #----------Dinh nghia ham chuyen doi UNIX-----
 def unix_convert(year,month,day,hour,minute,second):
     day = datetime(year,month,day,hour,minute,second)
@@ -98,7 +74,7 @@ def unix_convert(year,month,day,hour,minute,second):
 
 #----- Dinh nghia Ham gui du lieu-----
 def send_mqtt(timestamp,lat,lng,speed,temp,hum):
-    if all([lat != None, lng != None, speed != None, temp != None, hum != None]):
+    if all([lat != None, lng != None, speed != None]):
         device_data['timestamp'] = timestamp
         device_data['latitude'] = lat
         device_data['longitude'] = lng
@@ -107,7 +83,7 @@ def send_mqtt(timestamp,lat,lng,speed,temp,hum):
         device_data['hum'] = hum
         
         print(str(device_data['timestamp'])+' '+str(device_data['latitude'])+' '+str(device_data['longitude'])+' '+str(device_data['speed'])+' '+str(device_data['temp'])+' '+str(device_data['hum']))
-        client.publish('v1/devices/me/telemetry', json.dumps(device_data), 1)
+        mqtt.single('v1/devices/me/telemetry', json.dumps(device_data), hostname=THINGSBOARD_HOST, auth={'username':ACCESS_TOKEN})
     else:
         RandomLat = [10.654321, 10.632541, 10.521463, 10.614235, 10.659874]
         RandomLng = [106.458712, 106.478512, 106.492345, 106.481298, 106.489743]
@@ -122,29 +98,17 @@ def send_mqtt(timestamp,lat,lng,speed,temp,hum):
         device_data['hum'] = secrets.choice(RandomHum)
         
         print(str(device_data['timestamp'])+' '+str(device_data['latitude'])+' '+str(device_data['longitude'])+' '+str(device_data['speed'])+' '+str(device_data['temp'])+' '+str(device_data['hum']))
-        client.publish('v1/devices/me/telemetry', json.dumps(device_data), 1)
-
-#----------Dinh nghia ham cap nhat database----------
-#def insert_db(timestamp, latitude, longitude, speed):
-#    db = sqlite3.connect('GPS.db')
-#    cursor = db.cursor()
-#    cursor.execute('''INSERT INTO gps(timestamp, latitude, longitude, speed) VALUES(?,?,?,?)''', (timestamp, latitude, longitude, speed))
-#    db.commit()
-#    db.close()
+        mqtt.single('v1/devices/me/telemetry', json.dumps(device_data), hostname=THINGSBOARD_HOST, auth={'username':ACCESS_TOKEN})
 
 #----------khoi tao gui mqtt----------
-client = mqtt.Client()
-client.username_pw_set(ACCESS_TOKEN)
-client.connect(THINGSBOARD_HOST, 1883)
-client.loop_start()
+#client = mqtt.Client()
+#client.username_pw_set(ACCESS_TOKEN)
+#client.connect(THINGSBOARD_HOST, 1883, 60)
+#client.loop_start()
 
 print('Start')
 try:
     while True:
-        #-----Kiem tra Serial port-----
-        #if(serAMA.isOpen() == False):
-        #    print('Unable to open serial device. Try to open...\n')
-        #    serAMA.open()
             
         #--------doc du lieu GPS------------
         rawdata = serAMA.readline()
@@ -162,7 +126,6 @@ try:
                     Speed = gprmc.spd_over_grnd
                     LatDir = gprmc.lat_dir
                     LngDir = gprmc.lon_dir
-                    #insert_db(unix, Lat, Lng, Speed)
                     print('********************')
                     print('Thoi gian: ' + str(CurrDate) + ' ' + str(CurrTime) + ' ' + str(unix))
                     print('Toa do: ' + str(Lat) + ' ' + str(LatDir) + ', ' + str(Lng) + ' ' + str(LngDir))
@@ -182,6 +145,7 @@ try:
 except KeyboardInterrupt:
     pass
 GPIO.cleanup()
-client.loop_stop()
-client.disconnect()
+#client.loop_stop()
+#client.disconnect()
+
 
